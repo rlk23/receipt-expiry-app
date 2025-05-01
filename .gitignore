@@ -1,0 +1,18 @@
+# Node + Expo
+/frontend/node_modules
+/frontend/.expo
+/frontend/.expo-shared
+
+# Python
+/backend/venv
+/backend/__pycache__
+*.pyc
+*.pyo
+*.pyd
+
+# Environment
+**/.env
+.DS_Store
+
+# OS files
+Thumbs.db
