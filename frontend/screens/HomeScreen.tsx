@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -8,20 +8,47 @@ import {
   Alert,
   ActivityIndicator,
   ScrollView,
+  FlatList,
+  RefreshControl,
 } from "react-native";
 import { auth } from "../firebaseConfig";
 import { signOut } from "firebase/auth";
-import * as ImagePicker from "expo-image-picker";
 import axios from "axios";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { AuthStackParamList } from "../types/navigation";
+import * as ImagePicker from "expo-image-picker";
 
 type Props = NativeStackScreenProps<AuthStackParamList, "Home">;
 
+interface GroceryItem {
+  name: string;
+  expiry_date: string;
+  days_left: number;
+}
+
 export default function HomeScreen({ navigation }: Props) {
-  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [items, setItems] = useState<GroceryItem[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [imageUri, setImageUri] = useState<string | null>(null);
   const [ocrText, setOcrText] = useState<string>("");
+
+  const fetchItems = async () => {
+    setRefreshing(true);
+    try {
+      const token = await auth.currentUser?.getIdToken();
+      const res = await axios.get("http://127.0.0.1:8000/items", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      setItems(res.data.items);
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to load items");
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const handleLogout = async () => {
     await signOut(auth);
@@ -54,7 +81,7 @@ export default function HomeScreen({ navigation }: Props) {
         type: "image/jpeg",
       } as any);
 
-      const response = await axios.post("http://YOUR_BACKEND_URL/upload-receipt", formData, {
+      const response = await axios.post("http://127.0.0.1:8000/upload-receipt", formData, {
         headers: {
           "Content-Type": "multipart/form-data",
           Authorization: `Bearer ${token}`,
@@ -63,31 +90,48 @@ export default function HomeScreen({ navigation }: Props) {
 
       Alert.alert("Success", "Receipt uploaded!");
       setOcrText(response.data.text);
+      fetchItems(); // refresh list after upload
     } catch (error: any) {
-      console.error(error);
       Alert.alert("Upload Failed", error.message || "Something went wrong.");
     } finally {
       setLoading(false);
     }
   };
 
+  const getColor = (days: number) => {
+    if (days <= 2) return "#ff4d4d"; // red
+    if (days <= 5) return "#ffaa00"; // orange
+    return "#2ecc71"; // green
+  };
+
+  useEffect(() => {
+    fetchItems();
+  }, []);
+
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>📄 Receipt Expiry Tracker</Text>
+    <ScrollView contentContainerStyle={styles.container} refreshControl={
+      <RefreshControl refreshing={refreshing} onRefresh={fetchItems} />
+    }>
+      <Text style={styles.title}>🧾 Receipt Expiry Tracker</Text>
 
       <Button title="Upload Receipt" onPress={pickImage} />
-      {imageUri && (
-        <Image source={{ uri: imageUri }} style={styles.image} />
-      )}
-
+      {imageUri && <Image source={{ uri: imageUri }} style={styles.image} />}
       {loading && <ActivityIndicator size="large" color="#0000ff" style={{ marginTop: 10 }} />}
 
-      {ocrText ? (
-        <View style={styles.ocrBox}>
-          <Text style={styles.ocrLabel}>🧠 OCR Result:</Text>
-          <Text>{ocrText}</Text>
-        </View>
-      ) : null}
+      <Text style={styles.subtitle}>📋 Your Tracked Items</Text>
+      <FlatList
+        data={items}
+        keyExtractor={(item, index) => `${item.name}-${index}`}
+        renderItem={({ item }) => (
+          <View style={[styles.itemCard, { borderLeftColor: getColor(item.days_left) }]}>
+            <Text style={styles.itemName}>{item.name}</Text>
+            <Text>Expires on: {item.expiry_date}</Text>
+            <Text style={{ color: getColor(item.days_left) }}>{item.days_left} days left</Text>
+          </View>
+        )}
+        ListEmptyComponent={<Text style={{ marginTop: 20 }}>No items found yet.</Text>}
+        style={{ width: "100%" }}
+      />
 
       <Button title="Logout" onPress={handleLogout} color="#cc0000" />
     </ScrollView>
@@ -98,7 +142,6 @@ const styles = StyleSheet.create({
   container: {
     padding: 20,
     alignItems: "center",
-    justifyContent: "center",
     flexGrow: 1,
   },
   title: {
@@ -107,21 +150,28 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     textAlign: "center",
   },
+  subtitle: {
+    fontSize: 18,
+    marginTop: 20,
+    marginBottom: 10,
+  },
   image: {
     width: 200,
     height: 200,
     marginVertical: 10,
     borderRadius: 10,
   },
-  ocrBox: {
-    marginTop: 20,
+  itemCard: {
+    borderWidth: 1,
+    borderLeftWidth: 8,
     padding: 15,
-    backgroundColor: "#f2f2f2",
+    marginBottom: 12,
+    borderColor: "#ccc",
     borderRadius: 8,
-    width: "100%",
+    backgroundColor: "#fff",
   },
-  ocrLabel: {
+  itemName: {
     fontWeight: "bold",
-    marginBottom: 5,
+    fontSize: 16,
   },
 });
