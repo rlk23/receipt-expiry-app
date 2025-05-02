@@ -32,6 +32,7 @@ export default function HomeScreen({ navigation }: Props) {
   const [loading, setLoading] = useState(false);
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [ocrText, setOcrText] = useState<string>("");
+  const [filter, setFilter] = useState<"all" | "soon" | "fresh">("all");
 
   const fetchItems = async () => {
     setRefreshing(true);
@@ -104,32 +105,65 @@ export default function HomeScreen({ navigation }: Props) {
     return "#2ecc71"; // green
   };
 
+  const filteredItems = items.filter((item) => {
+    if (filter === "soon") return item.days_left <= 2;
+    if (filter === "fresh") return item.days_left > 5;
+    return true;
+  });
+
   useEffect(() => {
     fetchItems();
   }, []);
 
   return (
-    <ScrollView contentContainerStyle={styles.container} refreshControl={
-      <RefreshControl refreshing={refreshing} onRefresh={fetchItems} />
-    }>
+    <ScrollView
+      contentContainerStyle={styles.container}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={fetchItems} />
+      }
+    >
       <Text style={styles.title}>🧾 Receipt Expiry Tracker</Text>
 
       <Button title="Upload Receipt" onPress={pickImage} />
       {imageUri && <Image source={{ uri: imageUri }} style={styles.image} />}
-      {loading && <ActivityIndicator size="large" color="#0000ff" style={{ marginTop: 10 }} />}
+      {loading && (
+        <ActivityIndicator size="large" color="#0000ff" style={{ marginTop: 10 }} />
+      )}
 
       <Text style={styles.subtitle}>📋 Your Tracked Items</Text>
+
+      {/* Filter Buttons */}
+      <View style={styles.filterContainer}>
+        <Button
+          title="All"
+          onPress={() => setFilter("all")}
+          color={filter === "all" ? "#2196F3" : "#ccc"}
+        />
+        <Button
+          title="Expiring Soon"
+          onPress={() => setFilter("soon")}
+          color={filter === "soon" ? "#FF6B6B" : "#ccc"}
+        />
+        <Button
+          title="Fresh"
+          onPress={() => setFilter("fresh")}
+          color={filter === "fresh" ? "#4CAF50" : "#ccc"}
+        />
+      </View>
+
       <FlatList
-        data={items}
+        data={filteredItems}
         keyExtractor={(item, index) => `${item.name}-${index}`}
         renderItem={({ item }) => (
           <View style={[styles.itemCard, { borderLeftColor: getColor(item.days_left) }]}>
             <Text style={styles.itemName}>{item.name}</Text>
             <Text>Expires on: {item.expiry_date}</Text>
-            <Text style={{ color: getColor(item.days_left) }}>{item.days_left} days left</Text>
+            <Text style={{ color: getColor(item.days_left) }}>
+              {item.days_left} days left
+            </Text>
           </View>
         )}
-        ListEmptyComponent={<Text style={{ marginTop: 20 }}>No items found yet.</Text>}
+        ListEmptyComponent={<Text style={{ marginTop: 20 }}>No items found.</Text>}
         style={{ width: "100%" }}
       />
 
@@ -160,6 +194,12 @@ const styles = StyleSheet.create({
     height: 200,
     marginVertical: 10,
     borderRadius: 10,
+  },
+  filterContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    width: "100%",
+    marginBottom: 10,
   },
   itemCard: {
     borderWidth: 1,
