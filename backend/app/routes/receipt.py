@@ -1,3 +1,4 @@
+# backend/app/routes/receipt.py (relevant portion)
 from fastapi import APIRouter, File, UploadFile, Depends, Header, HTTPException
 from firebase_admin import auth as firebase_auth
 from PIL import Image
@@ -5,6 +6,10 @@ import pytesseract
 import tempfile
 import shutil
 import os
+from sqlalchemy.orm import Session
+from app.database import get_db
+from app.models.models import Receipt, Item
+from app.services.parser import extract_items
 
 router = APIRouter()
 
@@ -20,8 +25,8 @@ def verify_token(authorization: str = Header(...)):
 async def upload_receipt(
     file: UploadFile = File(...),
     user_id: str = Depends(verify_token),
+    db: Session = Depends(get_db)
 ):
-    # Save uploaded file temporarily
     with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
         shutil.copyfileobj(file.file, tmp)
         tmp_path = tmp.name
@@ -30,13 +35,23 @@ async def upload_receipt(
         image = Image.open(tmp_path)
         text = pytesseract.image_to_string(image)
 
-        print(f"User {user_id} uploaded a receipt.")
-        print("Extracted text:\n", text)
+        receipt = Receipt(user_id=user_id, text=text)
+        db.add(receipt)
+        db.commit()
+        db.refresh(receipt)
 
-        return {
-            "message": "OCR completed successfully",
-            "text": text,
-            "user_id": user_id,
-        }
+        parsed_items = extract_items(text)
+        for item in parsed_items:
+            db_item = Item(
+                receipt_id=receipt.id,
+                name=item["name"],
+                expiry_date=item["expiry_date"]
+            )
+            db.add(db_item)
+
+        db.commit()
+
+        return {"message": "Receipt and items saved.", "items": parsed_items}
+
     finally:
         os.remove(tmp_path)
