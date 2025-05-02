@@ -1,4 +1,4 @@
-from fastapi import APIRouter, File, UploadFile, Depends, Header, HTTPException
+from fastapi import APIRouter, File, UploadFile, Depends, Header, HTTPException, Path
 from firebase_admin import auth as firebase_auth
 from PIL import Image
 import pytesseract
@@ -7,6 +7,7 @@ import shutil
 import os
 from sqlalchemy.orm import Session
 from datetime import datetime
+from uuid import UUID
 
 from app.database import get_db
 from app.models.models import Receipt, Item
@@ -68,9 +69,53 @@ def get_user_items(user_id: str = Depends(verify_token), db: Session = Depends(g
     for item in items:
         days_left = (item.expiry_date - today).days
         results.append({
+            "id": str(item.id),
             "name": item.name,
             "expiry_date": item.expiry_date.strftime("%Y-%m-%d"),
             "days_left": days_left
         })
 
     return { "items": results }
+
+# 🗑️ Delete an item
+@router.delete("/items/{item_id}")
+def delete_item(
+    item_id: UUID,
+    user_id: str = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    item = db.query(Item).join(Receipt).filter(
+        Item.id == item_id,
+        Receipt.user_id == user_id
+    ).first()
+
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    db.delete(item)
+    db.commit()
+    return {"message": "Item deleted"}
+
+# ✏️ Update an item
+@router.put("/items/{item_id}")
+def update_item(
+    item_id: UUID,
+    payload: dict,
+    user_id: str = Depends(verify_token),
+    db: Session = Depends(get_db)
+):
+    item = db.query(Item).join(Receipt).filter(
+        Item.id == item_id,
+        Receipt.user_id == user_id
+    ).first()
+
+    if not item:
+        raise HTTPException(status_code=404, detail="Item not found")
+
+    if "name" in payload:
+        item.name = payload["name"]
+    if "expiry_date" in payload:
+        item.expiry_date = datetime.strptime(payload["expiry_date"], "%Y-%m-%d")
+
+    db.commit()
+    return {"message": "Item updated"}
