@@ -1,15 +1,10 @@
+// screens/SignInScreen.tsx
 import React, { useState } from "react";
-import {
-  View,
-  TextInput,
-  Button,
-  Alert,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-} from "react-native";
+import { View, TextInput, Button, StyleSheet, Alert } from "react-native";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../firebaseConfig";
+import axios from "axios";
+import { registerForPushNotificationsAsync } from "../utils/notifications";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { AuthStackParamList } from "../types/navigation";
 
@@ -21,25 +16,33 @@ export default function SignInScreen({ navigation }: Props) {
 
   const handleSignIn = async () => {
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      Alert.alert("Success", "Signed in!");
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const firebaseToken = await userCredential.user.getIdToken();
+
+      const expoPushToken = await registerForPushNotificationsAsync();
+
+      if (expoPushToken) {
+        await axios.post("http://127.0.0.1:8000/register-push-token", {
+          token: expoPushToken,
+        }, {
+          headers: {
+            Authorization: `Bearer ${firebaseToken}`,
+          },
+        });
+      }
+
       navigation.navigate("Home");
-    } catch (error: any) {
-      Alert.alert("Login Error", error.message);
+    } catch (err: any) {
+      Alert.alert("Login Failed", err.message || "Something went wrong");
     }
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
+    <View style={styles.container}>
       <TextInput
         placeholder="Email"
         value={email}
         onChangeText={setEmail}
-        autoCapitalize="none"
-        keyboardType="email-address"
         style={styles.input}
       />
       <TextInput
@@ -50,21 +53,21 @@ export default function SignInScreen({ navigation }: Props) {
         style={styles.input}
       />
       <Button title="Sign In" onPress={handleSignIn} />
-      <Button
-        title="Don't have an account? Sign Up"
-        onPress={() => navigation.navigate("SignUp")}
-      />
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: "center", padding: 20 },
+  container: {
+    padding: 20,
+    flex: 1,
+    justifyContent: "center",
+  },
   input: {
     borderWidth: 1,
     borderColor: "#ccc",
-    padding: 12,
-    marginBottom: 12,
+    padding: 10,
+    marginBottom: 15,
     borderRadius: 5,
   },
 });

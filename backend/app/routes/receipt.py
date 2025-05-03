@@ -1,4 +1,4 @@
-from fastapi import APIRouter, File, UploadFile, Depends, Header, HTTPException, Path
+from fastapi import APIRouter, File, UploadFile, Depends, Header, HTTPException, Path, Body
 from firebase_admin import auth as firebase_auth
 from PIL import Image
 import pytesseract
@@ -10,7 +10,7 @@ from datetime import datetime
 from uuid import UUID
 
 from app.database import get_db
-from app.models.models import Receipt, Item
+from app.models.models import Receipt, Item, User
 from app.services.parser import extract_items
 
 router = APIRouter()
@@ -119,3 +119,17 @@ def update_item(
 
     db.commit()
     return {"message": "Item updated"}
+
+# 🔔 Register Push Notification Token
+@router.post("/register-push-token")
+def register_push_token(
+    user_id: str = Depends(verify_token),
+    token: str = Body(...),
+    db: Session = Depends(get_db)
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if user:
+        user.push_token = token
+        db.commit()
+        return {"message": "Push token saved"}
+    raise HTTPException(status_code=404, detail="User not found")
